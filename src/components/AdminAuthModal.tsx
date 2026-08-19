@@ -102,7 +102,7 @@ export const AdminAuthModal: React.FC = () => {
               <input
                 type={showPassword ? 'text' : 'password'}
                 autoFocus
-                placeholder="Enter master passcode (Default: NAP2026)"
+                placeholder="Enter master passcode"
                 value={passcode}
                 onChange={(e) => {
                   setPasscode(e.target.value);
@@ -126,11 +126,6 @@ export const AdminAuthModal: React.FC = () => {
                 <span>{error}</span>
               </div>
             )}
-          </div>
-
-          {/* Quick Info / Hint */}
-          <div className="flex items-center justify-between text-[10px] text-zinc-500">
-            <span>Default Master Key: <strong className="text-zinc-400 font-mono">NAP2026</strong></span>
           </div>
 
           <div className="pt-1">

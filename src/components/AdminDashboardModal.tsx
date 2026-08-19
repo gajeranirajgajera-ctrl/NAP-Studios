@@ -1,28 +1,34 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   AlertCircle,
   ArrowRight,
   BarChart3,
   Camera,
+  Check,
   CheckCircle2,
   ChevronDown,
   DollarSign,
   Edit,
   Eye,
   Flame,
+  FlipHorizontal,
+  FolderUp,
   Image as ImageIcon,
   KeyRound,
   Layers,
   Link2,
   Lock,
   LogOut,
+  Maximize2,
   Package,
   Plus,
+  RefreshCw,
   RotateCcw,
   Search,
   Settings,
   ShieldCheck,
   ShoppingBag,
+  Smartphone,
   Sparkles,
   Star,
   Tag,
@@ -31,6 +37,7 @@ import {
   UploadCloud,
   Users,
   X,
+  Zap,
 } from 'lucide-react';
 import { useShop } from '../context/ShopContext';
 import { Coupon, OrderStatus, Product } from '../types';
@@ -56,10 +63,22 @@ export const AdminDashboardModal: React.FC = () => {
   } = useShop();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'OVERVIEW' | 'PRODUCTS' | 'ORDERS' | 'COUPONS' | 'CUSTOMERS' | 'SECURITY'>('OVERVIEW');
+  const [activeAdminTab, setActiveAdminTab] = useState<'OVERVIEW' | 'PRODUCTS' | 'CAMERA' | 'ORDERS' | 'COUPONS' | 'CUSTOMERS' | 'SECURITY'>('OVERVIEW');
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+
+  // Camera Studio State
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'environment' | 'user'>('environment');
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [isCameraLoading, setIsCameraLoading] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [capturedPhotoPreview, setCapturedPhotoPreview] = useState<string | null>(null);
+  const [isFlashActive, setIsFlashActive] = useState(false);
 
   // Security Form State
   const [currentPass, setCurrentPass] = useState('');
@@ -87,8 +106,6 @@ export const AdminDashboardModal: React.FC = () => {
   const [cType, setCType] = useState<'PERCENTAGE' | 'FIXED'>('PERCENTAGE');
   const [cValue, setCValue] = useState('15');
   const [cMinOrder, setCMinOrder] = useState('999');
-
-  if (!isAdminOpen) return null;
 
   // Overview metrics
   const totalRevenue = orders.reduce((acc, o) => acc + o.finalTotal, 0);
@@ -126,12 +143,130 @@ export const AdminDashboardModal: React.FC = () => {
     setIsProductModalOpen(true);
   };
 
+  // --- LIVE CAMERA CONTROLS ---
+  const startCameraStream = async (facing: 'environment' | 'user' = cameraFacingMode) => {
+    setIsCameraLoading(true);
+    setCameraError(null);
+    setCapturedPhotoPreview(null);
+
+    // Stop any existing active track
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+    }
+
+    try {
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        throw new Error('Camera API is not supported on this browser/device.');
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+      } catch (e) {
+        // Fallback constraint if ideal facing mode fails
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+
+      setCameraStream(stream);
+      setCameraFacingMode(facing);
+      setIsCameraModalOpen(true);
+
+      // Connect to video element once state/DOM updates
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }, 50);
+    } catch (err: any) {
+      console.error('Camera streaming failed:', err);
+      setCameraError(
+        err.message ||
+          'Camera access permission was denied or not available. Please allow camera permissions in your browser or use device file upload.'
+      );
+      setIsCameraModalOpen(true);
+    } finally {
+      setIsCameraLoading(false);
+    }
+  };
+
+  const stopCameraStream = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraModalOpen(false);
+    setCapturedPhotoPreview(null);
+    setCameraError(null);
+  };
+
+  const handleToggleFacingMode = () => {
+    const nextFacing = cameraFacingMode === 'environment' ? 'user' : 'environment';
+    startCameraStream(nextFacing);
+  };
+
+  const handleCaptureSnapshot = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current || document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Trigger flash visual effect
+    setIsFlashActive(true);
+    setTimeout(() => setIsFlashActive(false), 200);
+
+    // If front user camera, mirror horizontal for natural reflection
+    if (cameraFacingMode === 'user') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    setCapturedPhotoPreview(dataUrl);
+  };
+
+  const handleAcceptCapturedPhoto = (closeAfter = true) => {
+    if (!capturedPhotoPreview) return;
+    setPImages((prev) => [...prev, capturedPhotoPreview]);
+    showToast('Photo captured & attached to product!');
+    setCapturedPhotoPreview(null);
+    if (closeAfter) {
+      stopCameraStream();
+    }
+  };
+
+  // Stop camera when admin modal closes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [cameraStream]);
+
   // Photo handlers
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
-    Array.from(files).forEach((file) => {
+    Array.from(files).forEach((file: File) => {
       if (!file.type.startsWith('image/')) {
         showToast('Only image files are supported');
         return;
@@ -256,6 +391,8 @@ export const AdminDashboardModal: React.FC = () => {
     setCDesc('');
   };
 
+  if (!isAdminOpen) return null;
+
   return (
     <div
       id="admin-dashboard-modal"
@@ -284,6 +421,20 @@ export const AdminDashboardModal: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Direct Camera Button in Header */}
+            <button
+              type="button"
+              onClick={() => {
+                handleOpenNewProduct();
+                startCameraStream('environment');
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 text-zinc-950 font-mono text-[11px] font-black rounded-xl shadow-lg transition active:scale-95"
+              title="Open Live Camera Studio to Snap Clothing Photos"
+            >
+              <Camera className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>CAMERA SNAP</span>
+            </button>
+
             <button
               type="button"
               onClick={logoutAdmin}
@@ -308,6 +459,7 @@ export const AdminDashboardModal: React.FC = () => {
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar px-4 sm:px-6 py-2.5 bg-zinc-950/80 border-b border-zinc-800 text-xs font-mono">
           {[
             { id: 'OVERVIEW', label: 'OVERVIEW', icon: BarChart3 },
+            { id: 'CAMERA', label: '📸 STUDIO CAMERA', icon: Camera },
             { id: 'PRODUCTS', label: `PRODUCTS (${products.length})`, icon: Package },
             { id: 'ORDERS', label: `ORDERS (${orders.length})`, icon: ShoppingBag },
             { id: 'COUPONS', label: `COUPONS (${coupons.length})`, icon: Tag },
@@ -316,14 +468,24 @@ export const AdminDashboardModal: React.FC = () => {
           ].map((t) => {
             const Icon = t.icon;
             const active = activeAdminTab === t.id;
+            const isCam = t.id === 'CAMERA';
             return (
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setActiveAdminTab(t.id as any)}
+                onClick={() => {
+                  setActiveAdminTab(t.id as any);
+                  if (isCam && !cameraStream) {
+                    startCameraStream('environment');
+                  }
+                }}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition shrink-0 ${
                   active
-                    ? 'bg-white text-zinc-950 font-bold shadow-md'
+                    ? isCam
+                      ? 'bg-cyan-400 text-zinc-950 font-black shadow-lg'
+                      : 'bg-white text-zinc-950 font-bold shadow-md'
+                    : isCam
+                    ? 'text-cyan-300 bg-cyan-950/50 border border-cyan-500/30 hover:bg-cyan-900/60 font-bold'
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                 }`}
               >
@@ -339,6 +501,58 @@ export const AdminDashboardModal: React.FC = () => {
           {/* ================= 1. OVERVIEW ================= */}
           {activeAdminTab === 'OVERVIEW' && (
             <div className="space-y-6">
+              {/* Studio Camera Quick Action Card */}
+              <div className="bg-gradient-to-r from-cyan-950/70 via-zinc-900 to-zinc-950 border-2 border-cyan-500/50 rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+                <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-cyan-500/10 to-transparent pointer-events-none" />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400 text-cyan-300 font-mono text-[10px] font-bold tracking-wider animate-pulse">
+                        LIVE STUDIO STUDIO ACTIVE
+                      </span>
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-black font-brand text-white uppercase tracking-wider">
+                      SNAP & UPLOAD CLOTHING PHOTOS
+                    </h3>
+                    <p className="text-xs font-sans text-zinc-300 max-w-xl leading-relaxed">
+                      Use your device camera or mobile camera to snap live product pictures, set prices, and immediately drop new streetwear apparel into your store.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveAdminTab('CAMERA');
+                        startCameraStream('environment');
+                      }}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-zinc-950 font-mono text-xs font-black rounded-2xl shadow-xl transition active:scale-95"
+                    >
+                      <Camera className="w-4 h-4 stroke-[2.5]" />
+                      <span>OPEN STUDIO CAMERA</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => nativeCameraInputRef.current?.click()}
+                      className="flex items-center gap-2 px-4 py-2.5 bg-zinc-850 hover:bg-zinc-800 text-cyan-300 border border-cyan-500/30 font-mono text-xs font-bold rounded-2xl transition"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>MOBILE CAM</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-2 px-3.5 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-750 font-mono text-xs font-bold rounded-2xl transition"
+                    >
+                      <UploadCloud className="w-4 h-4" />
+                      <span>GALLERY</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Stat Cards 4-Grid */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800">
@@ -426,7 +640,276 @@ export const AdminDashboardModal: React.FC = () => {
             </div>
           )}
 
-          {/* ================= 2. PRODUCTS MANAGER ================= */}
+          {/* ================= 2. STUDIO CAMERA WORKSTATION TAB ================= */}
+          {activeAdminTab === 'CAMERA' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-950 p-4 sm:p-5 rounded-3xl border border-cyan-500/40">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                    <h3 className="text-base sm:text-lg font-black font-brand text-white uppercase tracking-wider">
+                      LIVE STUDIO CAMERA WORKSTATION
+                    </h3>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-1 font-sans">
+                    Capture real garment shots directly with your device camera or mobile camera, curate photos, and publish new drops into the storefront.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => startCameraStream(cameraFacingMode === 'environment' ? 'user' : 'environment')}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 rounded-xl text-xs font-mono"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>FLIP CAM ({cameraFacingMode.toUpperCase()})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => nativeCameraInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-850 hover:bg-zinc-800 text-cyan-300 border border-cyan-500/30 rounded-xl text-xs font-mono font-bold"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>MOBILE CAM</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid: Camera Viewfinder on Left, Live Photo Tray & Quick Publish Form on Right */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left: Viewfinder */}
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="relative aspect-[3/4] max-h-[500px] w-full bg-black rounded-3xl overflow-hidden border-2 border-cyan-500/40 shadow-2xl flex items-center justify-center">
+                    {/* Flash effect overlay */}
+                    {isFlashActive && (
+                      <div className="absolute inset-0 bg-white z-30 animate-out fade-out duration-300" />
+                    )}
+
+                    {/* Viewfinder Video Stream */}
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`w-full h-full object-cover ${cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                    />
+
+                    {/* Framing Guidelines */}
+                    <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 opacity-25">
+                      <div className="border-r border-b border-white" />
+                      <div className="border-r border-b border-white" />
+                      <div className="border-b border-white" />
+                      <div className="border-r border-b border-white" />
+                      <div className="border-r border-b border-white" />
+                      <div className="border-b border-white" />
+                      <div className="border-r border-white" />
+                      <div className="border-r border-white" />
+                      <div />
+                    </div>
+
+                    {/* Fallback if camera stream is inactive or error */}
+                    {(!cameraStream || isCameraLoading || cameraError) && (
+                      <div className="absolute inset-0 bg-zinc-950/90 flex flex-col items-center justify-center p-6 text-center space-y-4 z-20">
+                        <div className="w-16 h-16 rounded-3xl bg-zinc-900 border border-zinc-700 flex items-center justify-center text-cyan-400">
+                          <Camera className="w-8 h-8" />
+                        </div>
+                        <div>
+                          <h4 className="text-white font-bold uppercase text-sm">
+                            {cameraError ? 'Camera Access Required' : 'Live Camera Standby'}
+                          </h4>
+                          <p className="text-xs text-zinc-400 max-w-xs mt-1 font-sans">
+                            {cameraError || 'Activate camera feed to snap high-resolution apparel photos.'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-center">
+                          <button
+                            type="button"
+                            onClick={() => startCameraStream(cameraFacingMode)}
+                            className="px-5 py-2.5 bg-cyan-400 text-zinc-950 font-black rounded-2xl text-xs hover:bg-cyan-300 shadow-xl"
+                          >
+                            START LIVE CAMERA
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => nativeCameraInputRef.current?.click()}
+                            className="px-4 py-2.5 bg-zinc-800 text-zinc-200 border border-zinc-700 font-bold rounded-2xl text-xs hover:bg-zinc-700"
+                          >
+                            OPEN MOBILE CAMERA
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bottom Controls Bar on top of Viewfinder */}
+                    {cameraStream && (
+                      <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between bg-zinc-950/80 backdrop-blur-md p-3 rounded-2xl border border-zinc-800 z-20">
+                        <button
+                          type="button"
+                          onClick={() => startCameraStream(cameraFacingMode === 'environment' ? 'user' : 'environment')}
+                          className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white"
+                          title="Switch Camera"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+
+                        {/* Large Shutter Button */}
+                        <button
+                          type="button"
+                          onClick={() => capturePhotoFromVideo(false)}
+                          className="relative p-1 rounded-full border-4 border-cyan-400 hover:scale-105 active:scale-95 transition"
+                          title="Snap Photo"
+                        >
+                          <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-zinc-950 shadow-lg">
+                            <Camera className="w-6 h-6 stroke-[2.5]" />
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white"
+                          title="Upload from Device"
+                        >
+                          <UploadCloud className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Captured Photos & Instant Listing Builder */}
+                <div className="lg:col-span-5 space-y-4">
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-5 space-y-4">
+                    <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+                      <span className="font-bold text-white uppercase text-xs">
+                        CAPTURED PHOTOS ({pImages.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-[11px] text-cyan-400 hover:underline"
+                      >
+                        + Upload More
+                      </button>
+                    </div>
+
+                    {/* Photos Grid */}
+                    {pImages.length === 0 ? (
+                      <div className="py-8 text-center text-zinc-500 space-y-2 border border-dashed border-zinc-800 rounded-2xl">
+                        <Camera className="w-8 h-8 mx-auto stroke-[1.5]" />
+                        <p className="text-xs">No photos snapped yet. Click the shutter button on the camera to capture.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {pImages.map((img, idx) => (
+                          <div key={idx} className="relative aspect-[3/4] rounded-xl overflow-hidden bg-zinc-900 border border-zinc-800 group">
+                            <img src={img} alt={`Capture ${idx}`} className="w-full h-full object-cover" />
+                            {idx === 0 && (
+                              <span className="absolute top-1 left-1 bg-cyan-400 text-zinc-950 font-black px-1.5 py-0.5 rounded text-[8px]">
+                                COVER
+                              </span>
+                            )}
+                            <div className="absolute inset-0 bg-zinc-950/80 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1">
+                              {idx !== 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMakeCover(idx)}
+                                  className="p-1 rounded bg-zinc-800 text-white text-[9px] hover:bg-cyan-500 hover:text-zinc-950"
+                                  title="Make Cover"
+                                >
+                                  Cover
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveImage(idx)}
+                                className="p-1 rounded bg-red-950 text-red-400 hover:bg-red-900"
+                                title="Remove"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Quick Publish Form */}
+                    <div className="border-t border-zinc-850 pt-4 space-y-3">
+                      <span className="font-bold text-white uppercase text-[11px] block">
+                        FAST PRODUCT PUBLISH
+                      </span>
+
+                      <div>
+                        <label className="text-[10px] text-zinc-400 uppercase font-bold block mb-1">
+                          Product Name
+                        </label>
+                        <input
+                          type="text"
+                          value={pName}
+                          onChange={(e) => setPName(e.target.value)}
+                          placeholder="e.g. Heavy Acid Wash Boxy Tee"
+                          className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-2 text-white text-xs placeholder:text-zinc-600 focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-zinc-400 uppercase font-bold block mb-1">
+                            Category
+                          </label>
+                          <select
+                            value={pCategory}
+                            onChange={(e) => setPCategory(e.target.value as any)}
+                            className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-2 py-2 text-white text-xs"
+                          >
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.name}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] text-zinc-400 uppercase font-bold block mb-1">
+                            Price (₹)
+                          </label>
+                          <input
+                            type="number"
+                            value={pPrice}
+                            onChange={(e) => setPPrice(e.target.value)}
+                            placeholder="1499"
+                            className="w-full bg-zinc-900 border border-zinc-750 rounded-xl px-3 py-2 text-white text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          handleSaveProduct(e as any);
+                          setActiveAdminTab('PRODUCTS');
+                        }}
+                        disabled={pImages.length === 0}
+                        className={`w-full py-3 rounded-2xl font-black text-xs font-mono uppercase tracking-wider transition shadow-xl ${
+                          pImages.length > 0
+                            ? 'bg-gradient-to-r from-cyan-400 to-teal-400 text-zinc-950 hover:from-cyan-300 hover:to-teal-300'
+                            : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                        }`}
+                      >
+                        PUBLISH NEW DROP WITH PHOTOS →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================= 3. PRODUCTS MANAGER ================= */}
           {activeAdminTab === 'PRODUCTS' && (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -439,7 +922,29 @@ export const AdminDashboardModal: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Camera Action in Products Tab */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleOpenNewProduct();
+                      startCameraStream('environment');
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 text-zinc-950 font-bold rounded-xl shadow-md transition text-xs"
+                  >
+                    <Camera className="w-4 h-4 stroke-[2.5]" />
+                    <span>📸 SNAP PHOTO (CAMERA)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => nativeCameraInputRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-zinc-850 hover:bg-zinc-800 text-cyan-300 border border-cyan-500/30 font-bold rounded-xl transition text-xs"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>MOBILE CAM</span>
+                  </button>
+
                   {products.length > 0 && (
                     <button
                       type="button"
@@ -461,23 +966,23 @@ export const AdminDashboardModal: React.FC = () => {
                     className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold rounded-xl shadow-md transition text-xs"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>ADD PRODUCT WITH PHOTOS</span>
+                    <span>MANUAL ADD</span>
                   </button>
                 </div>
               </div>
 
               {/* Product Cards Table or Empty Slots */}
               {products.length === 0 ? (
-                <div className="p-8 sm:p-12 text-center rounded-3xl border border-dashed border-zinc-800 bg-zinc-950/60 space-y-4">
-                  <div className="w-16 h-16 rounded-3xl bg-zinc-900 border border-zinc-700 flex items-center justify-center mx-auto text-zinc-400 shadow-inner">
-                    <Camera className="w-8 h-8 stroke-[1.5]" />
+                <div className="p-8 sm:p-12 text-center rounded-3xl border border-dashed border-cyan-500/40 bg-zinc-950/80 space-y-4">
+                  <div className="w-16 h-16 rounded-3xl bg-cyan-950/80 border border-cyan-500/50 flex items-center justify-center mx-auto text-cyan-300 shadow-inner">
+                    <Camera className="w-8 h-8 stroke-[2]" />
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-white uppercase tracking-wider">
                       STOREFRONT IS CURRENTLY EMPTY
                     </h3>
                     <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1 font-sans">
-                      All previous clothing items have been removed. You can now upload your own brand apparel photos, set custom pricing, and publish new drops.
+                      All previous clothes have been cleared. You can now use your camera to take real photos and drop new apparel items.
                     </p>
                   </div>
 
@@ -485,25 +990,43 @@ export const AdminDashboardModal: React.FC = () => {
                     {[1, 2, 3, 4].map((slot) => (
                       <div
                         key={slot}
-                        onClick={handleOpenNewProduct}
-                        className="h-28 rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/40 hover:border-zinc-600 hover:bg-zinc-900 flex flex-col items-center justify-center cursor-pointer transition group"
+                        onClick={() => {
+                          handleOpenNewProduct();
+                          startCameraStream('environment');
+                        }}
+                        className="h-32 rounded-2xl border-2 border-dashed border-zinc-800 bg-zinc-900/40 hover:border-cyan-500 hover:bg-cyan-950/20 flex flex-col items-center justify-center cursor-pointer transition group p-2 text-center"
                       >
-                        <Plus className="w-5 h-5 text-zinc-600 group-hover:text-white mb-1 transition" />
-                        <span className="text-[10px] text-zinc-500 group-hover:text-zinc-300 uppercase">
+                        <Camera className="w-6 h-6 text-cyan-400 group-hover:scale-110 mb-1.5 transition" />
+                        <span className="text-[10px] font-bold text-zinc-300 group-hover:text-cyan-300 uppercase">
                           Empty Slot #{slot}
                         </span>
+                        <span className="text-[9px] text-zinc-500">Tap to Snap Photo</span>
                       </div>
                     ))}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleOpenNewProduct}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-white text-zinc-950 font-black rounded-2xl text-xs hover:bg-zinc-200 transition shadow-xl"
-                  >
-                    <UploadCloud className="w-4 h-4" />
-                    <span>UPLOAD YOUR FIRST CLOTHING PIECE</span>
-                  </button>
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenNewProduct();
+                        startCameraStream('environment');
+                      }}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-cyan-400 to-teal-400 text-zinc-950 font-black rounded-2xl text-xs hover:from-cyan-300 hover:to-teal-300 transition shadow-xl"
+                    >
+                      <Camera className="w-4 h-4 stroke-[2.5]" />
+                      <span>SNAP CLOTHING PHOTO WITH CAMERA</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => nativeCameraInputRef.current?.click()}
+                      className="inline-flex items-center gap-2 px-5 py-3 bg-zinc-900 text-cyan-300 border border-cyan-500/40 font-bold rounded-2xl text-xs hover:bg-zinc-850"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>MOBILE CAM</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -547,6 +1070,18 @@ export const AdminDashboardModal: React.FC = () => {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        {/* Quick Camera Trigger on Product Row */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleOpenEditProduct(prod);
+                            startCameraStream('environment');
+                          }}
+                          className="p-2 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-cyan-300 hover:text-white"
+                          title="Snap & Add Photos with Camera"
+                        >
+                          <Camera className="w-4 h-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleOpenEditProduct(prod)}
@@ -755,7 +1290,7 @@ export const AdminDashboardModal: React.FC = () => {
                     <input
                       type="password"
                       required
-                      placeholder="Enter existing passcode (Default: NAP2026)"
+                      placeholder="Enter current passcode"
                       value={currentPass}
                       onChange={(e) => {
                         setCurrentPass(e.target.value);
@@ -986,7 +1521,49 @@ export const AdminDashboardModal: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Upload Action 1: Upload from Device */}
+                {/* ================= PHOTO UPLOAD OPTIONS ================= */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Option 1: Live Camera Viewfinder Studio */}
+                  <button
+                    type="button"
+                    onClick={() => startCameraStream('environment')}
+                    className="p-3.5 bg-gradient-to-br from-cyan-950/60 to-zinc-900 border border-cyan-500/40 hover:border-cyan-400 rounded-2xl flex items-center gap-3 transition group text-left shadow-lg hover:shadow-cyan-950/50"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400 group-hover:scale-105 transition shrink-0">
+                      <Camera className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-xs flex items-center gap-1.5">
+                        <span>TAKE LIVE PHOTO</span>
+                        <span className="px-1.5 py-0.2 bg-cyan-400 text-zinc-950 rounded text-[9px] font-black">
+                          STUDIO
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-zinc-400 font-sans mt-0.5">
+                        Open in-app camera with live framing & shutter
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Option 2: Direct Mobile Camera Trigger */}
+                  <button
+                    type="button"
+                    onClick={() => nativeCameraInputRef.current?.click()}
+                    className="p-3.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-700 hover:border-zinc-500 rounded-2xl flex items-center gap-3 transition group text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400 group-hover:scale-105 transition shrink-0">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-xs">MOBILE CAMERA SNAP</div>
+                      <div className="text-[10px] text-zinc-400 font-sans mt-0.5">
+                        Launch phone's default camera directly
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Hidden File Inputs */}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -995,21 +1572,30 @@ export const AdminDashboardModal: React.FC = () => {
                   accept="image/*"
                   className="hidden"
                 />
+                <input
+                  type="file"
+                  ref={nativeCameraInputRef}
+                  onChange={handleFileUpload}
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                />
 
+                {/* Option 3: Browse Device Files / Gallery */}
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-4 border-2 border-dashed border-zinc-700 hover:border-cyan-400/80 bg-zinc-900/50 hover:bg-zinc-900 rounded-2xl text-center cursor-pointer transition group"
+                  className="p-3.5 border-2 border-dashed border-zinc-700 hover:border-cyan-400/80 bg-zinc-900/50 hover:bg-zinc-900 rounded-2xl text-center cursor-pointer transition group"
                 >
-                  <UploadCloud className="w-6 h-6 text-zinc-500 group-hover:text-cyan-400 mx-auto mb-1.5 transition" />
+                  <UploadCloud className="w-5 h-5 text-zinc-500 group-hover:text-cyan-400 mx-auto mb-1 transition" />
                   <span className="font-bold text-zinc-200 block text-xs group-hover:text-white">
-                    Click to Upload Clothes Photos from Device / Gallery
+                    Click to Browse Files / Gallery from Device
                   </span>
                   <span className="text-[10px] text-zinc-500 font-sans mt-0.5 block">
-                    Supports JPG, PNG, WEBP • Multiple photos allowed
+                    Supports JPG, PNG, WEBP • Multi-selection supported
                   </span>
                 </div>
 
-                {/* Upload Action 2: Image URL input */}
+                {/* Option 4: Image URL input */}
                 <div>
                   <label className="block text-zinc-400 mb-1 text-[11px]">OR PASTE IMAGE URL:</label>
                   <div className="flex gap-2">
@@ -1225,6 +1811,214 @@ export const AdminDashboardModal: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- LIVE CAMERA VIEWFINDER STUDIO MODAL --- */}
+      {isCameraModalOpen && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center p-3 sm:p-5 bg-zinc-950/95 backdrop-blur-lg animate-in fade-in select-none">
+          {/* Hidden Canvas for High-Resolution Snapshot Capture */}
+          <canvas ref={canvasRef} className="hidden" />
+
+          <div className="w-full max-w-xl bg-zinc-900 border border-zinc-700 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh] font-mono">
+            {/* Camera Header */}
+            <div className="p-4 bg-zinc-950 border-b border-zinc-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <Camera className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-black text-white uppercase flex items-center gap-2">
+                    <span>STUDIO CAMERA VIEWFINDER</span>
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  </div>
+                  <div className="text-[10px] text-zinc-400 font-sans">
+                    {cameraFacingMode === 'environment' ? 'Rear / Product Camera' : 'Front / Selfie Camera'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Switch Camera Facing Button */}
+                <button
+                  type="button"
+                  onClick={handleToggleFacingMode}
+                  className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 transition"
+                  title="Switch Front / Rear Camera"
+                >
+                  <FlipHorizontal className="w-4 h-4 text-cyan-400" />
+                </button>
+
+                {/* Close Camera Button */}
+                <button
+                  type="button"
+                  onClick={stopCameraStream}
+                  className="w-8 h-8 rounded-full bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition"
+                  title="Close Camera"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Camera Viewport / Captured Preview */}
+            <div className="relative bg-black flex-1 min-h-[320px] sm:min-h-[420px] flex items-center justify-center overflow-hidden">
+              {/* Flash animation effect */}
+              {isFlashActive && (
+                <div className="absolute inset-0 bg-white z-30 animate-out fade-out duration-200 pointer-events-none" />
+              )}
+
+              {/* Error Message Display */}
+              {cameraError ? (
+                <div className="p-6 text-center max-w-md space-y-3 z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 mx-auto">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-white uppercase">CAMERA ACCESS RESTRICTED</h4>
+                  <p className="text-xs text-zinc-400 font-sans leading-relaxed">{cameraError}</p>
+                  <div className="flex gap-2 justify-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => startCameraStream(cameraFacingMode)}
+                      className="px-4 py-2 bg-white text-zinc-950 font-bold rounded-xl text-xs flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>TRY AGAIN</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        stopCameraStream();
+                        fileInputRef.current?.click();
+                      }}
+                      className="px-4 py-2 bg-zinc-800 text-zinc-300 rounded-xl text-xs font-bold"
+                    >
+                      CHOOSE FROM FILES
+                    </button>
+                  </div>
+                </div>
+              ) : capturedPhotoPreview ? (
+                /* Captured Photo Freeze-Frame Review */
+                <div className="relative w-full h-full flex items-center justify-center bg-zinc-950">
+                  <img
+                    src={capturedPhotoPreview}
+                    alt="Captured Clothing Snapshot"
+                    className="max-h-[420px] w-full object-contain"
+                  />
+                  <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-emerald-500 text-zinc-950 text-[10px] font-black tracking-wider uppercase shadow">
+                    ✓ SNAPSHOT READY
+                  </div>
+                </div>
+              ) : (
+                /* Live Streaming Video */
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full max-h-[440px] object-cover ${
+                      cameraFacingMode === 'user' ? 'scale-x-[-1]' : ''
+                    }`}
+                  />
+
+                  {/* Framing Grid Overlay for Clothes */}
+                  <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 border border-white/10">
+                    <div className="border-r border-b border-white/10" />
+                    <div className="border-r border-b border-white/10" />
+                    <div className="border-b border-white/10" />
+                    <div className="border-r border-b border-white/10" />
+                    {/* Center Focus Box */}
+                    <div className="border-r border-b border-cyan-400/40 relative">
+                      <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-cyan-400" />
+                      <div className="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-cyan-400" />
+                      <div className="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-cyan-400" />
+                      <div className="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-cyan-400" />
+                    </div>
+                    <div className="border-b border-white/10" />
+                    <div className="border-r border-white/10" />
+                    <div className="border-r border-white/10" />
+                    <div className="" />
+                  </div>
+
+                  {/* Camera Status Overlay Tag */}
+                  <div className="absolute bottom-3 left-3 bg-zinc-950/80 backdrop-blur-md px-2.5 py-1 rounded-xl text-[10px] text-zinc-300 border border-zinc-800 flex items-center gap-1.5">
+                    <Zap className="w-3 h-3 text-amber-400 fill-current" />
+                    <span>Framing Guide Active</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Camera Bottom Controls */}
+            <div className="p-4 bg-zinc-950 border-t border-zinc-800">
+              {capturedPhotoPreview ? (
+                /* Post-Capture Review Actions */
+                <div className="space-y-2.5">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleAcceptCapturedPhoto(true)}
+                      className="flex-1 py-3.5 bg-white hover:bg-zinc-200 text-zinc-950 font-black uppercase text-xs rounded-2xl transition shadow-xl flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>ATTACH PHOTO & FINISH</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAcceptCapturedPhoto(false)}
+                      className="px-4 py-3.5 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-black uppercase text-xs rounded-2xl transition shadow-md flex items-center justify-center gap-1.5"
+                      title="Keep this photo and immediately take another"
+                    >
+                      <span>+ SNAP ANOTHER</span>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCapturedPhotoPreview(null)}
+                    className="w-full py-2.5 bg-zinc-850 hover:bg-zinc-800 text-zinc-300 font-bold uppercase text-[11px] rounded-xl transition flex items-center justify-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>RETAKE PHOTO</span>
+                  </button>
+                </div>
+              ) : (
+                /* Live Shutter Trigger */
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-[11px] text-zinc-400 hidden sm:block">
+                    {pImages.length} photo{pImages.length === 1 ? '' : 's'} currently attached
+                  </div>
+
+                  {/* Big Circular Camera Shutter */}
+                  <div className="flex-1 flex justify-center">
+                    <button
+                      type="button"
+                      disabled={!!cameraError || isCameraLoading}
+                      onClick={handleCaptureSnapshot}
+                      className="group relative flex items-center justify-center"
+                      title="Snap High Resolution Photo"
+                    >
+                      <div className="w-16 h-16 rounded-full border-4 border-white/40 group-hover:border-cyan-400 group-active:scale-95 transition flex items-center justify-center p-1 shadow-2xl">
+                        <div className="w-full h-full rounded-full bg-white group-hover:bg-cyan-400 transition" />
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Quick Flip / Upload Alternate */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleToggleFacingMode}
+                      className="px-3 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-300 text-xs rounded-xl font-bold transition flex items-center gap-1.5"
+                    >
+                      <FlipHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="hidden sm:inline">FLIP</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

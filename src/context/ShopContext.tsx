@@ -103,6 +103,9 @@ interface ShopContextType {
   clearAllProducts: () => void;
   createCoupon: (coupon: Coupon) => void;
   
+  // User Profile
+  updateUserProfile: (updated: Partial<User>) => void;
+
   // Address Management
   addAddress: (address: Omit<Address, 'id'>) => void;
   deleteAddress: (id: string) => void;
@@ -145,7 +148,19 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [user, setUser] = useState<User>(() => {
     const saved = localStorage.getItem('nap_v2_user');
-    return saved ? JSON.parse(saved) : INITIAL_USER;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.email?.includes('aryan') || parsed.name?.includes('Aryan')) {
+          localStorage.setItem('nap_v2_user', JSON.stringify(INITIAL_USER));
+          return INITIAL_USER;
+        }
+        return parsed;
+      } catch (e) {
+        return INITIAL_USER;
+      }
+    }
+    return INITIAL_USER;
   });
 
   const [coupons, setCoupons] = useState<Coupon[]>(() => {
@@ -547,6 +562,16 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
     showToast(`Coupon ${coupon.code} created`);
   };
 
+  // --- USER PROFILE ACTIONS ---
+  const updateUserProfile = (updated: Partial<User>) => {
+    setUser((prev) => {
+      const next = { ...prev, ...updated };
+      localStorage.setItem('nap_v2_user', JSON.stringify(next));
+      return next;
+    });
+    showToast('Profile updated successfully');
+  };
+
   // --- ADDRESS ACTIONS ---
   const addAddress = (addressData: Omit<Address, 'id'>) => {
     const newAddr: Address = {
@@ -639,6 +664,7 @@ export const ShopProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteProduct,
         clearAllProducts,
         createCoupon,
+        updateUserProfile,
         addAddress,
         deleteAddress,
         setDefaultAddress,

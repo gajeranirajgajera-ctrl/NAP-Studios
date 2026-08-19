@@ -66,11 +66,11 @@ export const INITIAL_COUPONS: Coupon[] = [];
 
 export const INITIAL_USER: User = {
   id: 'user-001',
-  name: 'Aryan Sharma',
-  email: 'aryan.sharma@napclothing.com',
+  name: 'Sangita Patel',
+  email: 'patelsangita28480@gmail.com',
   phone: '+91 98765 43210',
   avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-  membershipTier: 'NAP MEMBER',
+  membershipTier: 'BRAND FOUNDER',
   points: 0,
   loyaltyPoints: 0,
   storeCredits: 0,
@@ -81,11 +81,11 @@ export const INITIAL_USER: User = {
 export const INITIAL_ADDRESSES: Address[] = [
   {
     id: 'addr-01',
-    fullName: 'Aryan Sharma',
+    fullName: 'Sangita Patel',
     phone: '+91 98765 43210',
-    addressLine1: 'Flat 402, Skyline Luxury Residencies',
+    addressLine1: 'Studio 101, Fashion Tech Hub',
     addressLine2: 'Road No. 12, Indiranagar',
-    landmark: 'Near 100 Feet Road Metro',
+    landmark: 'Near 100 Feet Road',
     city: 'Bengaluru',
     state: 'Karnataka',
     pincode: '560038',

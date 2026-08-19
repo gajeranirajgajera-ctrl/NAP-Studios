@@ -7,6 +7,7 @@ import {
   CreditCard,
   Crown,
   Download,
+  Edit3,
   Flame,
   Gift,
   Heart,
@@ -22,6 +23,7 @@ import {
   Sparkles,
   Truck,
   User,
+  X,
 } from 'lucide-react';
 import { useShop } from '../context/ShopContext';
 import { Address } from '../types';
@@ -38,10 +40,27 @@ export const AccountView: React.FC = () => {
     isAdminAuthenticated,
     setActiveTab,
     openProductDetail,
+    updateUserProfile,
     showToast,
   } = useShop();
 
   const [activeAccountSubTab, setActiveAccountSubTab] = useState<'ORDERS' | 'ADDRESSES' | 'WALLET' | 'SETTINGS'>('ORDERS');
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editName, setEditName] = useState(user.name);
+  const [editEmail, setEditEmail] = useState(user.email);
+  const [editPhone, setEditPhone] = useState(user.phone || '');
+  const [editAvatar, setEditAvatar] = useState(user.avatar);
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateUserProfile({
+      name: editName.trim() || 'Sangita Patel',
+      email: editEmail.trim() || 'patelsangita28480@gmail.com',
+      phone: editPhone.trim() || '+91 98765 43210',
+      avatar: editAvatar.trim() || user.avatar,
+    });
+    setIsEditProfileOpen(false);
+  };
 
   const wishlistedProducts = products.filter((p) => wishlist.includes(p.id));
 
@@ -72,6 +91,20 @@ export const AccountView: React.FC = () => {
                 <span className="px-2.5 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-amber-300 font-mono text-[10px] font-bold tracking-wider">
                   {user.membershipTier}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditName(user.name);
+                    setEditEmail(user.email);
+                    setEditPhone(user.phone || '');
+                    setEditAvatar(user.avatar);
+                    setIsEditProfileOpen(true);
+                  }}
+                  className="p-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition ml-1"
+                  title="Edit Account Details"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
               </div>
               <p className="text-xs font-mono text-zinc-400 mt-0.5">{user.email}</p>
               <div className="flex items-center gap-3 text-[11px] font-mono text-zinc-500 mt-1.5">
@@ -82,15 +115,32 @@ export const AccountView: React.FC = () => {
             </div>
           </div>
 
-          {/* Admin Portal Quick Switch Button */}
-          <button
-            type="button"
-            onClick={requestAdminAccess}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-white hover:text-zinc-950 text-zinc-200 border border-zinc-700 font-mono text-xs font-bold rounded-2xl transition shadow-md"
-          >
-            <Lock className="w-4 h-4 text-amber-400" />
-            <span>{isAdminAuthenticated ? 'STUDIO ADMIN' : 'OWNER ACCESS'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditName(user.name);
+                setEditEmail(user.email);
+                setEditPhone(user.phone || '');
+                setEditAvatar(user.avatar);
+                setIsEditProfileOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 font-mono text-xs font-bold rounded-2xl transition"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>EDIT PROFILE</span>
+            </button>
+
+            {/* Admin Portal Quick Switch Button */}
+            <button
+              type="button"
+              onClick={requestAdminAccess}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-white hover:text-zinc-950 text-zinc-200 border border-zinc-700 font-mono text-xs font-bold rounded-2xl transition shadow-md"
+            >
+              <Lock className="w-4 h-4 text-amber-400" />
+              <span>{isAdminAuthenticated ? 'STUDIO ADMIN' : 'OWNER ACCESS'}</span>
+            </button>
+          </div>
         </div>
 
         {/* 4-Stat Quick Strip */}
@@ -444,6 +494,91 @@ export const AccountView: React.FC = () => {
                 <span>{isAdminAuthenticated ? 'OPEN STUDIO PORTAL' : 'ENTER MASTER PASSCODE'}</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= EDIT PROFILE MODAL ================= */}
+      {isEditProfileOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-zinc-950/90 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-md bg-zinc-900 border border-zinc-700 rounded-3xl p-6 shadow-2xl space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase">EDIT ACCOUNT PROFILE</h3>
+                  <p className="text-[10px] text-zinc-400">Personalize your name and email</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditProfileOpen(false)}
+                className="w-7 h-7 rounded-full bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="space-y-3.5">
+              <div>
+                <label className="block text-zinc-400 mb-1 font-bold uppercase text-[10px]">
+                  FULL NAME
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Sangita Patel"
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 mb-1 font-bold uppercase text-[10px]">
+                  EMAIL ADDRESS
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="patelsangita28480@gmail.com"
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 mb-1 font-bold uppercase text-[10px]">
+                  PHONE NUMBER
+                </label>
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-white focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-white hover:bg-zinc-200 text-zinc-950 font-black uppercase tracking-wider rounded-xl transition shadow-lg"
+                >
+                  SAVE PROFILE CHANGES
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditProfileOpen(false)}
+                  className="px-4 py-3 bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition"
+                >
+                  CANCEL
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
