@@ -1,0 +1,6 @@
+{
+  "name": "NAP Clothing",
+  "description": "Premium modern fashion & streetwear e-commerce app featuring curated drops, live order tracking, interactive catalog, customizable shopping bag, and full brand admin suite.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
